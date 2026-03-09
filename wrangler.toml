@@ -1,0 +1,11 @@
+name = "cf-ai-edge-debugger"
+type = "typescript"
+
+# Durable Objects
+[[durable_objects]]
+binding = "MY_DURABLE_OBJECT"     # env variable in your Worker
+class_name = "MyDurableObject"    # exported class name from src/index.ts
+
+# Workers AI binding
+[vars]
+AI = "@cf/meta/llama-3.3-70b-instruct"

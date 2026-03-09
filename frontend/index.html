@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LogFlare — AI Log Debugger</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #080b14;
+      --surface: #0e1120;
+      --surface2: #151929;
+      --border: #1e2540;
+      --border-glow: #2d3a6e;
+      --accent: #f97316;
+      --accent2: #6366f1;
+      --accent3: #22d3ee;
+      --text: #f0f2ff;
+      --text-muted: #6b7494;
+      --error: #f87171;
+      --warning: #fbbf24;
+      --success: #34d399;
+      --info: #60a5fa;
+      --radius: 12px;
+      --mono: 'Consolas', 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      /* Subtle grid background */
+      background-image:
+        linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      background: rgba(14,17,32,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #f97316, #ec4899);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 16px rgba(249,115,22,0.45);
+      flex-shrink: 0;
+    }
+
+    .brand {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(90deg, #f97316, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+      letter-spacing: 0.3px;
+      margin-top: 0px;
+      -webkit-text-fill-color: var(--text-muted);
+    }
+
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    .badge-model {
+      background: rgba(99,102,241,0.15);
+      color: #818cf8;
+      border: 1px solid rgba(99,102,241,0.3);
+    }
+
+    .badge-edge {
+      background: rgba(34,211,238,0.1);
+      color: var(--accent3);
+      border: 1px solid rgba(34,211,238,0.25);
+    }
+
+    /* ── Hero banner ─────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg,
+        rgba(249,115,22,0.12) 0%,
+        rgba(99,102,241,0.1) 50%,
+        rgba(236,72,153,0.08) 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 28px 32px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 240px; height: 240px;
+      background: radial-gradient(circle, rgba(249,115,22,0.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      bottom: -40px; left: 40%;
+      width: 180px; height: 180px;
+      background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero h2 {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      line-height: 1.2;
+      margin-bottom: 8px;
+    }
+
+    .hero h2 span {
+      background: linear-gradient(90deg, #f97316, #a855f7, #22d3ee);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 560px;
+      line-height: 1.6;
+    }
+
+    .hero-pills {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      font-size: 11px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pill-orange { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.25); }
+    .pill-purple { background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
+    .pill-cyan   { background: rgba(34,211,238,0.1);  color: #22d3ee; border: 1px solid rgba(34,211,238,0.2); }
+
+    /* ── Main layout ─────────────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      flex: 1;
+    }
+
+    main {
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-label::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #f97316, #ec4899);
+    }
+
+    /* ── Input ───────────────────────────────────────────────── */
+    .input-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-wrap:focus-within {
+      border-color: rgba(249,115,22,0.5);
+      box-shadow: 0 0 0 3px rgba(249,115,22,0.08), 0 0 20px rgba(249,115,22,0.06);
+    }
+
+    #logInput {
+      width: 100%;
+      min-height: 160px;
+      max-height: 300px;
+      resize: vertical;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.65;
+      padding: 16px;
+      outline: none;
+    }
+
+    #logInput::placeholder { color: #353a52; }
+
+    .input-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    #charCount {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.18s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #f97316, #ec4899);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(249,115,22,0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(249,115,22,0.45);
+      filter: brightness(1.08);
+    }
+
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover { color: var(--text); border-color: #374060; background: var(--surface2); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--error);
+      border: 1px solid rgba(248,113,113,0.25);
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+
+    .btn-danger:hover { background: rgba(248,113,113,0.08); }
+
+    .action-row { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Spinner ─────────────────────────────────────────────── */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Output panel ────────────────────────────────────────── */
+    .output-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      border-radius: var(--radius) var(--radius) 0 0;
+      flex-shrink: 0;
+    }
+
+    .output-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .output-header span {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #252b45;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .status-dot.active  { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .status-dot.loading { background: var(--warning); box-shadow: 0 0 8px var(--warning); animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+    #output {
+      padding: 20px;
+      height: 55vh;
+      overflow-y: scroll;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .output-placeholder {
+      color: #2d3452;
+      font-family: var(--mono);
+      font-size: 13px;
+      text-align: center;
+      padding-top: 50px;
+      line-height: 1.8;
+    }
+
+    /* ── Color-coded lines ───────────────────────────────────── */
+    .line-error   { color: var(--error);   }
+    .line-warning { color: var(--warning); }
+    .line-success { color: var(--success); }
+    .line-info    { color: var(--info);    }
+    .line-normal  { color: #c5cadf;        }
+
+    /* Section headings in AI output */
+    .line-heading {
+      color: #a78bfa;
+      font-weight: 700;
+      margin-top: 4px;
+      display: block;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    aside {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .aside-header {
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface2);
+    }
+
+    .aside-header span {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #sessionList {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .session-empty {
+      color: #2d3452;
+      font-size: 13px;
+      text-align: center;
+      padding: 36px 14px;
+      line-height: 1.7;
+      font-family: var(--mono);
+    }
+
+    .session-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      overflow: hidden;
+    }
+
+    .session-item:hover {
+      border-color: rgba(249,115,22,0.4);
+      color: var(--text);
+      background: rgba(249,115,22,0.05);
+      box-shadow: 0 0 12px rgba(249,115,22,0.05);
+    }
+
+    .item-time {
+      font-size: 10px;
+      color: #353a52;
+      margin-bottom: 4px;
+      font-family: sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .item-preview {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Scrollbars ──────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e2540; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2d3560; }
+
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { border-left: none; border-top: 1px solid var(--border); max-height: 200px; }
+      .hero h2 { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-wrap">
+      <div class="logo">⚡</div>
+      <div>
+        <div class="brand">LogFlare</div>
+        <div class="brand-sub">AI-Powered Log Debugger</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="badge badge-edge">Edge Runtime</span>
+      <span class="badge badge-model">Llama 3.1 · 8B</span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h2>Debug logs instantly with <span>AI at the edge</span></h2>
+    <p>Paste any application log — errors, stack traces, warnings — and get structured root cause analysis, highlighted issues, and concrete fix suggestions in seconds.</p>
+    <div class="hero-pills">
+      <span class="pill pill-orange">⚡ Cloudflare Workers</span>
+      <span class="pill pill-purple">🧠 Context-Aware AI</span>
+      <span class="pill pill-cyan">💾 Durable Object Memory</span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <main>
+
+      <!-- Input -->
+      <div>
+        <div class="section-label">Log Input</div>
+        <div class="input-wrap">
+          <textarea id="logInput" placeholder="Paste your logs here...
+
+e.g.
+ERROR: Connection refused at 192.168.1.1:5432
+WARN: Retry attempt 3/5 failed
+TypeError: Cannot read properties of undefined (reading 'id')
+  at Object.handler (/app/routes/user.js:42:18)"></textarea>
+          <div class="input-footer">
+            <span id="charCount">0 characters</span>
+            <div class="action-row">
+              <button class="btn btn-ghost" id="clearBtn">Clear</button>
+              <button class="btn btn-primary" id="analyzeBtn">
+                <div class="spinner" id="spinner"></div>
+                <span id="btnText">⚡ Analyze Logs</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+        <div class="section-label">AI Analysis</div>
+        <div class="output-wrap">
+          <div class="output-header">
+            <div class="output-header-left">
+              <div class="status-dot" id="statusDot"></div>
+              <span>Output</span>
+            </div>
+            <div class="legend">
+              <span class="legend-item"><span class="legend-dot" style="background:var(--error)"></span>Error</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--warning)"></span>Warning</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--success)"></span>Fix</span>
+              <span class="legend-item"><span class="legend-dot" style="background:var(--info)"></span>Info</span>
+            </div>
+          </div>
+          <div id="output">
+            <div class="output-placeholder">
+              // LogFlare is ready.<br/>
+              // Paste your logs above and hit Analyze.<br/>
+              // Press Ctrl+Enter to submit quickly.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Sidebar -->
+    <aside>
+      <div class="aside-header">
+        <span>📋 Session History</span>
+        <button class="btn btn-danger" id="clearSessionBtn">Clear</button>
+      </div>
+      <div id="sessionList">
+        <div class="session-empty">// no history yet<br/>// analyses will appear here</div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>

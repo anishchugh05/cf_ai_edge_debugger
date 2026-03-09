@@ -1,64 +1,108 @@
-import { DurableObject } from "cloudflare:workers";
+import DurableObjectSession from "./durableObject";
+import type { LogEntry } from "./durableObject";
 
-/**
- * Welcome to Cloudflare Workers! This is your first Durable Objects application.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your Durable Object in action
- * - Run `npm run deploy` to publish your application
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/durable-objects
- */
+export interface Env {
+  MY_DURABLE_OBJECT: DurableObjectNamespace;
+  AI: Ai;
+  ASSETS: Fetcher;
+}
 
-/** A Durable Object's behavior is defined in an exported Javascript class */
-export class MyDurableObject extends DurableObject<Env> {
-	/**
-	 * The constructor is invoked once upon creation of the Durable Object, i.e. the first call to
-	 * 	`DurableObjectStub::get` for a given identifier (no-op constructors can be omitted)
-	 *
-	 * @param ctx - The interface for interacting with Durable Object state
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 */
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
-	}
+export { DurableObjectSession as MyDurableObject };
 
-	/**
-	 * The Durable Object exposes an RPC method sayHello which will be invoked when a Durable
-	 *  Object instance receives a request from a Worker via the same method invocation on the stub
-	 *
-	 * @param name - The name provided to a Durable Object instance from a Worker
-	 * @returns The greeting to be sent back to the Worker
-	 */
-	async sayHello(name: string): Promise<string> {
-		return `Hello, ${name}!`;
-	}
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+function getStub(env: Env) {
+  const id = env.MY_DURABLE_OBJECT.idFromName("main-session");
+  return env.MY_DURABLE_OBJECT.get(id);
+}
+
+function errorResponse(message: string, status = 500) {
+  return new Response(JSON.stringify({ error: message }), { status, headers: JSON_HEADERS });
 }
 
 export default {
-	/**
-	 * This is the standard fetch handler for a Cloudflare Worker
-	 *
-	 * @param request - The request submitted to the Worker from the client
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 * @param ctx - The execution context of the Worker
-	 * @returns The response to be sent back to the client
-	 */
-	async fetch(request, env, ctx): Promise<Response> {
-		// Create a stub to open a communication channel with the Durable Object
-		// instance named "foo".
-		//
-		// Requests from all Workers to the Durable Object instance named "foo"
-		// will go to a single remote Durable Object instance.
-		const stub = env.MY_DURABLE_OBJECT.getByName("foo");
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      const url = new URL(request.url);
 
-		// Call the `sayHello()` RPC method on the stub to invoke the method on
-		// the remote Durable Object instance.
-		const greeting = await stub.sayHello("world");
+      // ── POST /analyze ───────────────────────────────────────────
+      if (request.method === "POST" && url.pathname === "/analyze") {
+        const body = await request.json() as { log?: string };
+        const logText = body.log?.trim();
 
-		return new Response(greeting);
-	},
-} satisfies ExportedHandler<Env>;
+        if (!logText) {
+          return errorResponse("Missing log field", 400);
+        }
+
+        const stub = getStub(env);
+
+        // Fetch previous entries for context-aware AI conversation
+        let entries: LogEntry[] = [];
+        try {
+          const historyRes = await stub.fetch("http://do/history");
+          const data: { entries: LogEntry[] } = await historyRes.json();
+          entries = data.entries ?? [];
+        } catch (e) {
+          console.error("Failed to fetch DO history:", e);
+        }
+
+        // Build messages with up to 5 previous entries as context
+        const messages: { role: string; content: string }[] = [
+          {
+            role: "system",
+            content:
+              "You are an expert developer AI helping debug logs. " +
+              "Analyze the log provided, identify root causes, highlight errors and warnings, " +
+              "and suggest concrete fixes. Structure your response with these sections:\n" +
+              "## Root Cause\n## Errors & Warnings\n## Suggested Fixes",
+          },
+        ];
+
+        const recentEntries = entries.slice(-5);
+        if (recentEntries.length > 0) {
+          const context = recentEntries
+            .map((e, i) => `[Previous log ${i + 1}]:\n${e.log}\n[Previous analysis ${i + 1}]:\n${e.response}`)
+            .join("\n\n");
+          messages.push({ role: "user", content: `Context from this session:\n\n${context}` });
+          messages.push({ role: "assistant", content: "Understood. Ready for the new log." });
+        }
+
+        messages.push({ role: "user", content: logText });
+
+        // Call Workers AI
+        const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, { messages });
+        const responseText: string = (aiResponse as any).response ?? "No response from AI.";
+
+        // Persist log + response to Durable Object (non-blocking on failure)
+        stub.fetch("http://do/save", {
+          method: "POST",
+          body: JSON.stringify({ log: logText, response: responseText }),
+        }).catch(e => console.error("Failed to save to DO:", e));
+
+        return new Response(JSON.stringify({ response: responseText }), { headers: JSON_HEADERS });
+      }
+
+      // ── GET /history ──────────────────────────────────────────
+      if (request.method === "GET" && url.pathname === "/history") {
+        const stub = getStub(env);
+        const res = await stub.fetch("http://do/history");
+        const data = await res.json();
+        return new Response(JSON.stringify(data), { headers: JSON_HEADERS });
+      }
+
+      // ── DELETE /history ───────────────────────────────────────
+      if (request.method === "DELETE" && url.pathname === "/history") {
+        const stub = getStub(env);
+        await stub.fetch("http://do/history", { method: "DELETE" });
+        return new Response(JSON.stringify({ ok: true }), { headers: JSON_HEADERS });
+      }
+
+      // ── Serve static frontend assets ──────────────────────────
+      return env.ASSETS.fetch(request);
+
+    } catch (err: any) {
+      console.error("Worker error:", err);
+      return errorResponse(err?.message ?? "Internal server error");
+    }
+  },
+};
