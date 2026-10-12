@@ -71,7 +71,7 @@ export default {
 
         // Call Workers AI
         const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, { messages });
-        const responseText: string = (aiResponse as any).response ?? "No response from AI.";
+        const responseText: string = aiResponse && typeof aiResponse === 'object' && 'response' in aiResponse ? aiResponse.response : "No response from AI.";
 
         // Persist log + response to Durable Object (non-blocking on failure)
         stub.fetch("http://do/save", {
